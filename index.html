@@ -49,15 +49,15 @@ function exportData(){let a=document.createElement('a'),b=new Blob([JSON.stringi
 const GOOGLE_CLIENT_ID='611294920775-soli64k777tk6vrr783sf3vipjpgn7lt.apps.googleusercontent.com';
 const SPREADSHEET_ID='1ywaVGqWAW-ULzJL2B9gVcpfnwiOARzylGLzYAtyr9n8';
 const SHEETS_SCOPE='https://www.googleapis.com/auth/spreadsheets';
-let googleToken='',tokenClient=null,syncTimer=null,isLoadingCloud=false;
+let googleToken='',tokenClient=null,syncTimer=null,isLoadingCloud=false,silentAuthAttempt=false;
 const sheetNames=['Food_Diary','Food_Library','Water_Tracker','Weight_Tracker','Settings'];
 function syncMessage(msg){let a=document.getElementById('syncStatus');if(a)a.textContent=msg;let b=document.getElementById('settingsSyncStatus');if(b)b.textContent=msg}
 function initGoogleAuth(){
   if(!window.google?.accounts?.oauth2) return false;
   if(!tokenClient) tokenClient=google.accounts.oauth2.initTokenClient({
     client_id:GOOGLE_CLIENT_ID,scope:SHEETS_SCOPE,
-    callback:async(resp)=>{if(resp.error){syncMessage('Google sign-in failed');alert('Google sign-in failed: '+resp.error);return}
-      googleToken=resp.access_token;document.getElementById('googleBtn').textContent='Google connected';
+    callback:async(resp)=>{if(resp.error){googleToken='';syncMessage('Google not connected · tap Connect Google');if(!silentAuthAttempt)alert('Google sign-in failed: '+resp.error);silentAuthAttempt=false;return}
+      silentAuthAttempt=false;googleToken=resp.access_token;localStorage.setItem('nt_google_authorized','1');document.getElementById('googleBtn').textContent='Google connected';
       syncMessage('Connecting to your spreadsheet…');
       try{await loadCloudDatabase();syncMessage('Synced with Google Sheets');showPage(currentPage);}
       catch(err){console.error(err);syncMessage('Sync error · local data kept');alert('Could not sync with Google Sheets. '+err.message)}
@@ -67,7 +67,17 @@ function initGoogleAuth(){
 }
 function connectGoogle(){
   if(!initGoogleAuth()){alert('Google sign-in is still loading. Wait a few seconds and try again.');return}
-  tokenClient.requestAccessToken({prompt:googleToken?'':'consent'});
+  const previouslyAuthorized=localStorage.getItem('nt_google_authorized')==='1';
+  tokenClient.requestAccessToken({prompt:previouslyAuthorized?'select_account':'consent'});
+}
+function restoreGoogleSession(){
+  if(!initGoogleAuth()){setTimeout(restoreGoogleSession,400);return}
+  if(localStorage.getItem('nt_google_authorized')!=='1'){
+    syncMessage('Tap Connect Google to authorize');
+    return;
+  }
+  silentAuthAttempt=true;
+  tokenClient.requestAccessToken({prompt:''});
 }
 async function sheetsRequest(path,options={}){
   if(!googleToken)throw new Error('Google account is not connected');
@@ -113,5 +123,5 @@ function scheduleCloudSave(){
 let currentPage='dashboard';
 
 document.getElementById('today').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'});nav();showPage('dashboard');
-if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
+window.addEventListener('load',()=>{restoreGoogleSession();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js')});
 </script></body></html>
